@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
-import { StyleSheet, View, Alert } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { getApiUrl } from '@/constants/api';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useRef, useState } from 'react';
+import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 export default function LoginScreen() {
@@ -8,6 +9,61 @@ export default function LoginScreen() {
   const params = useLocalSearchParams();
   const webViewRef = useRef<WebView>(null);
   const qrData = params.qrData as string | undefined;
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 로그인 API 호출
+  const handleLogin = async (userId: string, password: string, autoLogin: boolean) => {
+    setIsLoading(true);
+    
+    try {
+      const response = await fetch(`${getApiUrl()}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          password,
+          autoLogin,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // 로그인 성공
+        console.log('로그인 성공:', data.data.user);
+        // 자동로그인 정보 저장 (필요시 AsyncStorage 사용)
+        if (autoLogin) {
+          // TODO: 세션 토큰 저장
+        }
+        // 메인 화면으로 이동
+        router.replace('/(tabs)');
+      } else {
+        Alert.alert('로그인 실패', data.message || '아이디 또는 비밀번호가 올바르지 않습니다.');
+      }
+    } catch (error: any) {
+      console.error('로그인 오류:', error);
+      console.error('API URL:', getApiUrl());
+      console.error('에러 상세:', error.message);
+      
+      let errorMessage = '서버에 연결할 수 없습니다.\n\n';
+      
+      if (error.message?.includes('Network request failed')) {
+        errorMessage += '가능한 원인:\n';
+        errorMessage += '1. 서버가 실행 중인지 확인\n';
+        errorMessage += '2. URL이 올바른지 확인\n';
+        errorMessage += '3. 실제 기기 사용 시 IP 주소 확인\n';
+        errorMessage += `\n현재 API URL: ${getApiUrl()}`;
+      } else {
+        errorMessage += error.message || '알 수 없는 오류가 발생했습니다.';
+      }
+      
+      Alert.alert('연결 오류', errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // WebView에서 메시지 수신 처리
   const handleMessage = (event: any) => {
@@ -20,26 +76,8 @@ export default function LoginScreen() {
       } else if (message.type === 'login') {
         const { userId, password, autoLogin } = message.data;
         
-        // 로그인 처리 (여기서는 예시로 Alert만 표시)
-        Alert.alert(
-          '로그인 시도',
-          `아이디: ${userId}\n자동로그인: ${autoLogin ? '예' : '아니오'}`,
-          [
-            {
-              text: '취소',
-              style: 'cancel',
-            },
-            {
-              text: '확인',
-              onPress: () => {
-                // 실제 로그인 API 호출 등 처리
-                console.log('로그인 처리:', { userId, autoLogin });
-                // 로그인 성공 시 메인 화면(탭 화면)으로 이동
-                router.replace('/(tabs)');
-              },
-            },
-          ]
-        );
+        // 로그인 API 호출
+        handleLogin(userId, password, autoLogin);
       }
     } catch (error) {
       console.error('메시지 파싱 오류:', error);
@@ -189,6 +227,11 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#0A84FF" />
+        </View>
+      )}
       <WebView
         ref={webViewRef}
         source={{ html: htmlContent }}
@@ -213,5 +256,16 @@ const styles = StyleSheet.create({
   webview: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
   },
 });
